@@ -228,14 +228,14 @@
             ]
           }],
           generationConfig: {
-            maxOutputTokens: 500,
+            maxOutputTokens: 400,
             temperature: 0.7
           }
         })
       });
 
       const data = await response.json();
-      if (data.error) throw new Error(data.error.message);
+      if (data.error) throw new Error(`${modelName}: ${data.error.message}`);
       return data.candidates[0].content.parts[0].text;
     }
 
@@ -248,36 +248,34 @@
       const base64Data = getOptimizedImageData();
       const locInfo = userLocation ? `Koordinaadid: ${userLocation.lat.toFixed(4)}, ${userLocation.lon.toFixed(4)}.` : '';
       
-      const prompt = `Sa oled soe, elav ja haritud eestikeelne reisigiid Vietnamis. ${locInfo}
-Tuvasta pildil olev koht, hoone, söök või objekt. 
-Räägi reisijale sõbralikult ja ladusalt täpselt 3 kuni 5 sisukat lauset:
-1. Mis see täpselt on ja mis on selle kohalik nimi või tähendus.
-2. Üks põnev ajalooline fakt, kultuuriline taust või kohalik tava, mis sellega seondub.
-Ära kasuta ametlikku ega kuiva tooni, räägi nagu hea giid teekaaslasele. Ära kasuta loetelusid ega tärne.`;
+      const prompt = `Sa oled soe ja asjatundlik eestikeelne reisigiid Vietnamis. ${locInfo}
+Tuvasta pildilt nähtav koht, ese, söök või vaatamisväärsus. 
+Räägi reisijale ladusalt ja kaasahaaravalt 3 kuni 4 lauset: mis see on, miks see kohalikele või ajaloole oluline on, ja üks huvitav detail. 
+Ära tee ametlikku sissejuhatust. Räägi voolavas kõnekeeles ilma loetelutäppideta.`;
 
-      const candidateModels = ['gemini-3.8-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
-      let success = false;
+      // Proovitavad mudelid järjestuses
+      const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+      let lastErrors = [];
 
       for (const model of candidateModels) {
         try {
-          statusEl.innerText = `Giid uurib vaadet...`;
+          statusEl.innerText = `Päring: ${model}...`;
           const reply = await queryModel(model, prompt, base64Data);
           
           statusEl.innerText = "Giid räägib:";
           resultEl.innerText = reply;
           speakEstonian(reply);
-          success = true;
-          break;
+          scanBtn.disabled = false;
+          return;
         } catch (err) {
-          console.warn(`Mudel ${model} tõrkus:`, err.message);
+          console.warn(err.message);
+          lastErrors.push(err.message);
         }
       }
 
-      if (!success) {
-        statusEl.innerText = "Kõik liinid on hetkel hõivatud!";
-        resultEl.innerText = "Serverid on hetkel suure koormuse all. Oota hetk ja proovi uuesti.";
-      }
-
+      // Kui ükski ei toiminud, näitame ekraanil täpset viga
+      statusEl.innerText = "Tõrge ühendusel:";
+      resultEl.innerText = lastErrors.join("\n\n");
       scanBtn.disabled = false;
     }
   </script>
