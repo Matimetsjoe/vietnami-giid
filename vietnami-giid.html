@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="et">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Vietnami Giid</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #121212; color: #fff; overflow: hidden;
+      display: flex; flex-direction: column;
+      height: 100dvh;
+    }
+    #camera-container { position: relative; flex: 1; overflow: hidden; background: #000; }
+    video, #frozen { width: 100%; height: 100%; object-fit: cover; }
+    #frozen { position: absolute; inset: 0; display: none; }
+    #controls {
+      position: absolute; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); left: 0; width: 100%;
+      display: flex; justify-content: center; gap: 12px; z-index: 10;
+    }
+    .action-btn {
+      background: #e63946; color: white; border: none; padding: 16px 28px; border-radius: 50px;
+      font-size: 17px; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.5); cursor: pointer;
+    }
+    .action-btn:disabled { background: #666; }
+    .stop-btn { background: #333; color: white; border: none; padding: 16px 22px; border-radius: 50px; font-size: 17px; cursor: pointer; }
+    #output-box { max-height: 42vh; background: rgba(18,18,18,0.95); padding: 18px; overflow-y: auto; border-top: 1px solid #333; line-height: 1.5; }
+    #setup-modal {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: flex; flex-direction: column;
+      justify-content: center; padding: 24px; z-index: 100;
+    }
+    input { padding: 12px; border-radius: 8px; border: 1px solid #444; background: #222; color: #fff; margin-bottom: 16px; font-size: 16px; }
+    button.save-btn { padding: 12px; border-radius: 8px; background: #2a9d8f; color: white; border: none; font-weight: bold; font-size: 16px; }
+    .status-text { font-style: italic; color: #aaa; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+
+  <div id="setup-modal">
+    <h2 style="margin-bottom: 12px;">Tere tulemast!</h2>
+    <p style="margin-bottom: 16px; color: #ccc;">Sisesta oma Gemini API võti:</p>
+    <input type="password" id="api-key-input" placeholder="AIzaSy..." />
+    <button class="save-btn" onclick="saveApiKey()">Alusta giidiga</button>
+  </div>
+
+  <div id="camera-container">
+    <video id="video" autoplay playsinline muted></video>
+    <img id="frozen" alt="">
+    <canvas id="canvas" style="display:none;"></canvas>
+    <div id="controls">
+      <button id="scan-btn" class="action-btn" onclick="captureAndExplain()">Räägi sellest</button>
+      <button class="stop-btn" onclick="stopAll()">Vaikus</button>
+    </div>
+  </div>
+
+  <div id="output-box">
+    <div id="status" class="status-text">Valmis pildistama...</div>
+    <div id="result">Suuna kaamera huvipakkuvale kohale ja vajuta nupule.</div>
+  </div>
+
+  <script>
+    // Kiire mudel esimesena, varuks veel kergem. (gemini-3.8-pro ei ole olemas.)
+    const MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
+
+    let apiKey = localStorage.getItem('gemini_api_key') || '';
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const frozen = document.getElementById('frozen');
+    const statusEl = document.getElementById('status');
+    const resultEl = document.getElementById('result');
+    const scanBtn = document.getElementById('scan-btn');
+    let userLocation = null;
+    let currentCtl = null;
+
+    if (apiKey) { document.getElementById('setup-modal').style.display = 'none'; startCamera(); }
+
+    function saveApiKey() {
+      const val = document.getElementById('api-key-input').value.trim();
+      if (!val) return alert('Palun sisesta API võti!');
+      apiKey = val;
+      localStorage.setItem('gemini_api_key', apiKey);
+      document.getElementById('setup-modal').style.display = 'none';
+      startCamera();
+    }
+
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }, audio: false
+        });
+        video.srcObject = stream;
+      } catch (err) { alert('Kaamerat ei õnnestunud avada: ' + err.message); }
+
+      if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(
+          pos => { userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude }; },
+          err => console.log('GPS info puudub:', err),
+          { enableHighAccuracy: false, maximumAge: 60000 }
+        );
+      }
+    }
+
+    // ---------- Kõne: loeb ette lause kaupa, kohe kui lause on valmis ----------
+    let etVoice = null;
+    function pickVoice() {
+      etVoice = speechSynthesis.getVoices().find(v => v.lang && v.lang.toLowerCase().startsWith('et')) || null;
+    }
+    if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+
+    function speakSentence(text) {
+      if (!('speechSynthesis' in window) || !text.trim()) return;
+      const u = new SpeechSynthesisUtterance(text.trim());
+      u.lang = 'et-EE'; u.rate = 1.05;
+      if (etVoice) u.voice = etVoice;
+      speechSynthesis.speak(u); // läheb järjekorda, eelmine lause loetakse enne lõpuni
+    }
+
+    function stopAll() {
+      if (currentCtl) currentCtl.abort();
+      if ('speechSynthesis' in window) speechSynthesis.cancel();
+    }
+
+    // ---------- Pilt ----------
+    function getOptimizedImageData() {
+      const vw = video.videoWidth || 640, vh = video.videoHeight || 480, maxDim = 800;
+      const s = Math.min(1, maxDim / Math.max(vw, vh));
+      canvas.width = Math.round(vw * s); canvas.height = Math.round(vh * s);
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+      const url = canvas.toDataURL('image/jpeg', 0.65);
+      frozen.src = url; frozen.style.display = 'block'; // näita, mis kaader saadeti
+      return url.split(',')[1];
+    }
+
+    // ---------- Voogedastusega päring ----------
+    async function streamModel(model, prompt, base64Data, signal, onChunk, withThinkingConfig) {
+      const generationConfig = { maxOutputTokens: 400, temperature: 0.6 };
+      if (withThinkingConfig) generationConfig.thinkingConfig = { thinkingLevel: 'minimal' };
+
+      // NB: signal'it fetch'ile ei anta – mõnes eelvaate-keskkonnas (postMessage proxy) see ei tööta.
+      const abortErr = () => { const e = new Error('Peatatud'); e.name = 'AbortError'; return e; };
+      if (signal.aborted) throw abortErr();
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          contents: [{ parts: [
+            { text: prompt },
+            { inline_data: { mime_type: 'image/jpeg', data: base64Data } }
+          ]}],
+          generationConfig
+        })
+      });
+
+      if (signal.aborted) throw abortErr();
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`;
+        try { msg = (await res.json()).error?.message || msg; } catch (e) {}
+        const err = new Error(`${model}: ${msg}`); err.status = res.status; throw err;
+      }
+
+      // Kui keskkond ei toeta voogedastust, loe kogu vastus korraga
+      if (!res.body || !res.body.getReader) {
+        const text = await res.text();
+        if (signal.aborted) throw abortErr();
+        for (const line of text.split('\n')) {
+          if (!line.startsWith('data:')) continue;
+          try {
+            const parts = JSON.parse(line.slice(5)).candidates?.[0]?.content?.parts || [];
+            for (const p of parts) if (p.text && !p.thought) onChunk(p.text);
+          } catch (e) {}
+        }
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const onAbort = () => { try { reader.cancel(); } catch (e) {} };
+      signal.addEventListener('abort', onAbort, { once: true });
+      const dec = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (signal.aborted) throw abortErr();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          try {
+            const json = JSON.parse(line.slice(5));
+            const parts = json.candidates?.[0]?.content?.parts || [];
+            for (const p of parts) if (p.text && !p.thought) onChunk(p.text);
+          } catch (e) { /* poolik rida, ignoreeri */ }
+        }
+      }
+    }
+
+    async function captureAndExplain() {
+      stopAll();
+      // iOS: kõne tuleb "avada" kohe nupuvajutuse ajal, muidu hilisem kõne vaikib
+      if ('speechSynthesis' in window) speechSynthesis.speak(new SpeechSynthesisUtterance(''));
+
+      scanBtn.disabled = true;
+      const ctl = new AbortController(); currentCtl = ctl;
+      const t0 = performance.now();
+      statusEl.innerText = 'Giid vaatab...';
+      resultEl.innerText = '';
+
+      const base64Data = getOptimizedImageData();
+      const locInfo = userLocation ? `Reisija GPS-koordinaadid: ${userLocation.lat.toFixed(4)}, ${userLocation.lon.toFixed(4)} (kasuta asukoha täpsustamiseks).` : '';
+      const prompt = `Sa oled soe, elav ja haritud eestikeelne reisigiid Vietnamis. ${locInfo}
+Tuvasta pildil olev koht, hoone, söök või objekt.
+Räägi reisijale sõbralikult ja ladusalt 3 kuni 5 sisukat lauset:
+1. Mis see täpselt on ja mis on selle kohalik nimi või tähendus.
+2. Üks põnev fakt, kultuuriline taust või kohalik tava, mis sellega seondub.
+Kui sa pole kindel, ütle seda ausalt ega leiuta fakte.
+Ära tee ametlikku sissejuhatust, räägi nagu hea giid teekaaslasele. Ära kasuta loetelusid ega tärne.`;
+
+      let full = '', pending = '';
+      const onChunk = (txt) => {
+        if (!full) statusEl.innerText = `Giid räägib (${((performance.now() - t0) / 1000).toFixed(1)} s):`;
+        full += txt; pending += txt;
+        resultEl.innerText = full;
+        // Loe ette kõik valmis laused
+        const m = pending.match(/^[\s\S]*[.!?…](\s|$)/);
+        if (m) { speakSentence(m[0]); pending = pending.slice(m[0].length); }
+      };
+
+      const errors = [];
+      for (const model of MODELS) {
+        let withThinking = true;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            await streamModel(model, prompt, base64Data, ctl.signal, onChunk, withThinking);
+            if (pending.trim()) speakSentence(pending);
+            done(); return;
+          } catch (err) {
+            if (err.name === 'AbortError') { statusEl.innerText = 'Peatatud.'; done(); return; }
+            errors.push(err.message);
+            if (full) { done(); return; } // osa vastusest juba käes, ära alusta otsast
+            // Kui mudel ei toeta thinkingLevel'it, proovi ilma
+            if (err.status === 400 && /thinking/i.test(err.message) && withThinking) { withThinking = false; continue; }
+            // Kordamine aitab ainult ülekoormuse/ajutise vea korral
+            if (err.status === 429 || err.status >= 500) { await new Promise(r => setTimeout(r, 500)); continue; }
+            break; // 400/403/404 – järgmine mudel
+          }
+        }
+      }
+      statusEl.innerText = 'Tõrge ühendusel:';
+      resultEl.innerText = errors.join('\n\n');
+      done();
+
+      function done() {
+        scanBtn.disabled = false;
+        if (currentCtl === ctl) currentCtl = null;
+        setTimeout(() => { frozen.style.display = 'none'; }, 1500);
+      }
+    }
+  </script>
+</body>
+</html>
