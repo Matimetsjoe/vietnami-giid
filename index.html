@@ -93,15 +93,13 @@
 </head>
 <body>
 
-  <!-- API võtme küsimise aken esmakordsel avamisel -->
   <div id="setup-modal">
     <h2 style="margin-bottom: 12px;">Tere tulemast!</h2>
-    <p style="margin-bottom: 16px; color: #ccc;">Sisesta oma Gemini API võti (salvestatakse ainult sinu telefoni brauserisse):</p>
+    <p style="margin-bottom: 16px; color: #ccc;">Sisesta oma Gemini API võti:</p>
     <input type="password" id="api-key-input" placeholder="AIzaSy..." />
     <button class="save-btn" onclick="saveApiKey()">Alusta giidiga</button>
   </div>
 
-  <!-- Kaamera vaade -->
   <div id="camera-container">
     <video id="video" autoplay playsinline muted></video>
     <canvas id="canvas" style="display:none;"></canvas>
@@ -111,7 +109,6 @@
     </div>
   </div>
 
-  <!-- Teksti ja vastuse aken -->
   <div id="output-box">
     <div id="status" class="status-text">Valmis pildistama...</div>
     <div id="result">Suuna kaamera huvipakkuvale objektile ja vajuta nupule.</div>
@@ -140,7 +137,6 @@
       startCamera();
     }
 
-    // Käivitab tagakaamera
     async function startCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -152,7 +148,6 @@
         alert('Kaamerat ei õnnestunud avada: ' + err.message);
       }
 
-      // Küsib koordinaadid taustal
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           pos => { userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude }; },
@@ -161,16 +156,14 @@
       }
     }
 
-    // Loeb teksti eesti keeles ette
     function speakEstonian(text) {
       if (!('speechSynthesis' in window)) return;
-      window.speechSynthesis.cancel(); // peata eelmine kõne
+      window.speechSynthesis.cancel();
       
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'et-EE'; // eesti keele kood
+      utterance.lang = 'et-EE';
       utterance.rate = 1.0;
       
-      // Proovime leida spetsiaalse eesti hääle, kui brauseris leidub
       const voices = window.speechSynthesis.getVoices();
       const etVoice = voices.find(v => v.lang.startsWith('et'));
       if (etVoice) utterance.voice = etVoice;
@@ -183,14 +176,12 @@
       statusEl.innerText = "Pildistan ja analüüsin...";
       resultEl.innerText = "";
 
-      // 1. Pildi kaadrist võtmine
       canvas.width = video.videoWidth || 640;
       canvas.height = video.videoHeight || 480;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const base64Data = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
 
-      // 2. Viip (prompt) Geminile
       const locInfo = userLocation ? `Asukoha koordinaadid: Laius ${userLocation.lat}, Pikkus ${userLocation.lon}.` : '';
       const prompt = `Sa oled tark ja soe eestikeelne reisigiid Vietnamis. 
 ${locInfo}
@@ -199,9 +190,9 @@ Tee lühike, kaasahaarav ja huvitav tutvustus (maksimaalselt 3–4 lauset).
 Räägi elavalt, nagu räägiks professionaalne giid otse reisijale. 
 Ära kasuta loetelusid ega tärne, räägi voolavas kõnekeeles.`;
 
-      // 3. API päring Gemini 2.5 Flash mudelile
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+        // Kasutame ametlikku gemini-2.0-flash mudelit
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
         const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -225,7 +216,6 @@ Räägi elavalt, nagu räägiks professionaalne giid otse reisijale.
         statusEl.innerText = "Giid räägib:";
         resultEl.innerText = reply;
 
-        // 4. Loeme ette
         speakEstonian(reply);
 
       } catch (err) {
