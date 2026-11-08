@@ -24,7 +24,6 @@
       position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); left: 12px; z-index: 10;
       background: rgba(0,0,0,0.55); border-radius: 50px; padding: 8px 12px; font-size: 13px; display: none;
     }
-
     #controls {
       display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;
       padding: 10px 12px; background: #1b1b1b; border-top: 1px solid #333;
@@ -36,7 +35,6 @@
     #controls button:disabled { opacity: 0.4; }
     #scan-btn { grid-column: 1 / -1; background: #e63946; font-size: 18px; padding: 16px; }
     #scan-btn:disabled { background: #666; opacity: 1; }
-
     #output-box {
       flex: 1 1 55%; min-height: 0; overflow-y: auto; padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
       background: #121212; line-height: 1.55;
@@ -47,7 +45,6 @@
     #steps li.err { color: #ff6b6b; }
     #result { font-size: 18px; white-space: pre-wrap; }
     #result .speaking { background: rgba(230,57,70,0.25); border-radius: 4px; }
-
     #setup-modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.92); display: flex; flex-direction: column;
       justify-content: center; padding: 24px; z-index: 100;
@@ -55,6 +52,15 @@
     #setup-modal input { padding: 12px; border-radius: 8px; border: 1px solid #444; background: #222; color: #fff; margin-bottom: 16px; font-size: 16px; }
     #setup-modal button { padding: 12px; border-radius: 8px; background: #2a9d8f; color: white; border: none; font-weight: bold; font-size: 16px; }
   </style>
+  <script>
+    // Näita iga skriptiviga ekraanil
+    window.onerror = function (msg, src, line) {
+      var box = document.getElementById('steps');
+      var t = '✗ Skriptiviga: ' + msg + ' (rida ' + line + ')';
+      if (box) box.innerHTML += '<li class="err">' + t.replace(/</g, '&lt;') + '</li>';
+      else document.addEventListener('DOMContentLoaded', function(){ window.onerror(msg, src, line); });
+    };
+  </script>
 </head>
 <body>
 
@@ -70,7 +76,7 @@
     <img id="frozen" alt="">
     <canvas id="canvas" style="display:none;"></canvas>
     <div id="badge"></div>
-    <button id="reload-btn" onclick="location.reload()">⟳ Lae leht uuesti</button>
+    <button id="reload-btn" onclick="location.reload()">⟳ v4</button>
   </div>
 
   <div id="controls">
@@ -196,7 +202,7 @@
     // ---------- Gemini voogedastus ----------
     async function streamModel(model, prompt, base64Data, signal, onChunk, onConnected, withThinking) {
       const abortErr = () => { const e = new Error('Peatatud'); e.name = 'AbortError'; return e; };
-      const generationConfig = { maxOutputTokens: 2048, temperature: 0.6 };
+      const generationConfig = { maxOutputTokens: 2048 };
       if (withThinking) generationConfig.thinkingConfig = { thinkingLevel: 'minimal' };
 
       const res = await fetch(
@@ -216,7 +222,7 @@
       }
       onConnected();
 
-            const handleLine = line => {
+      const handleLine = line => {
         if (!line.startsWith('data:')) return;
         try {
           const j = JSON.parse(line.slice(5));
@@ -271,8 +277,8 @@
 
       const base64Data = dataUrl.split(',')[1];
       const kb = Math.round(base64Data.length * 0.75 / 1024);
-      setSteps([[`${fresh ? 'Kaader tehtud' : 'Sama kaader uuesti'} (${canvas.width || ''}×${canvas.height || ''}, ${kb} KB)`, 'done']]);
-      step(userLocation ? 'GPS asukoht olemas' : 'GPS asukohta pole (toimib ka ilma)', userLocation ? 'done' : 'done');
+      setSteps([[`${fresh ? 'Kaader tehtud' : 'Sama kaader uuesti'} (${kb} KB)`, 'done']]);
+      step(userLocation ? 'GPS asukoht olemas' : 'GPS asukohta pole (toimib ka ilma)', 'done');
 
       const locInfo = userLocation ? `Reisija GPS-koordinaadid: ${userLocation.lat.toFixed(4)}, ${userLocation.lon.toFixed(4)} (kasuta asukoha täpsustamiseks).` : '';
       const prompt = `Sa oled soe, elav ja haritud eestikeelne reisigiid Vietnamis. ${locInfo}
@@ -298,7 +304,6 @@ Kui sa pole kindel, ütle seda ausalt ega leiuta fakte.
         outBox.scrollTop = outBox.scrollHeight;
       };
 
-      const errors = [];
       for (const model of MODELS) {
         let withThinking = true;
         for (let attempt = 1; attempt <= 2; attempt++) {
@@ -313,7 +318,6 @@ Kui sa pole kindel, ütle seda ausalt ega leiuta fakte.
           } catch (err) {
             if (err.name === 'AbortError') { step('Peatatud', 'err'); return finish(!!sentences.length); }
             if (lastText) { step('Ühendus katkes poole vastuse pealt', 'err'); return finish(true); }
-            errors.push(err.message);
             step(err.message, 'err');
             if (err.status === 400 && /thinking/i.test(err.message) && withThinking) { withThinking = false; continue; }
             if (err.status === 429 || err.status >= 500 || !err.status) { await new Promise(r => setTimeout(r, 500)); continue; }
