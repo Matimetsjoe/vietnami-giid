@@ -48,10 +48,10 @@
       cursor: pointer;
     }
     .stop-btn {
-      background: #444;
+      background: #333;
       color: white;
       border: none;
-      padding: 16px 20px;
+      padding: 16px 22px;
       border-radius: 50px;
       font-size: 17px;
       cursor: pointer;
@@ -182,7 +182,7 @@
       
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = 'et-EE';
-      utterance.rate = 1.05; // kergelt kiirem ja elavam tempo
+      utterance.rate = 1.05;
       
       const voices = window.speechSynthesis.getVoices();
       const etVoice = voices.find(v => v.lang.startsWith('et'));
@@ -191,7 +191,6 @@
       window.speechSynthesis.speak(utterance);
     }
 
-    // Tihendab ja optimeerib pildi kiireks võrguülekandeks (max 800px laius/kõrgus)
     function getOptimizedImageData() {
       const vw = video.videoWidth || 640;
       const vh = video.videoHeight || 480;
@@ -213,9 +212,32 @@
       canvas.height = targetH;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(video, 0, 0, targetW, targetH);
-      
-      // JPEG kvaliteet 0.65 – faili suurus langeb alla 70-100 KB
       return canvas.toDataURL('image/jpeg', 0.65).split(',')[1];
+    }
+
+    // Päringufunktsioon kindlale mudelile
+    async function queryModel(modelName, prompt, base64Data) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: prompt },
+              { inline_data: { mime_type: "image/jpeg", data: base64Data } }
+            ]
+          }],
+          generationConfig: {
+            maxOutputTokens: 200,
+            temperature: 0.3
+          }
+        })
+      });
+
+      const data = await response.json();
+      if (data.error) throw new Error(data.error.message);
+      return data.candidates[0].content.parts[0].text;
     }
 
     async function captureAndExplain() {
@@ -225,48 +247,38 @@
       resultEl.innerText = "";
 
       const base64Data = getOptimizedImageData();
-
       const locInfo = userLocation ? `Koordinaadid: ${userLocation.lat.toFixed(4)}, ${userLocation.lon.toFixed(4)}.` : '';
       const prompt = `Sa oled terane eestikeelne giid Vietnamis. ${locInfo}
 Tuvasta objekt või koht pildilt. 
 Räägi otsekoheselt ja kaasahaaravalt 2–3 lausega: mis see on ja miks see on huvitav või eriline. 
 Ära pane sissejuhatust stiilis "Pildil on näha". Räägi ladusas kõnekeeles.`;
 
-      try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [
-                { text: prompt },
-                { inline_data: { mime_type: "image/jpeg", data: base64Data } }
-              ]
-            }],
-            generationConfig: {
-              maxOutputTokens: 200,
-              temperature: 0.4
-            }
-          })
-        });
+      // Mudelite järjekord: kui esimene on hõivatud, võetakse kohe järgmine
+      const candidateModels = ['gemini-3.8-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+      let success = false;
 
-        const data = await response.json();
-        
-        if (data.error) throw new Error(data.error.message);
-
-        const reply = data.candidates[0].content.parts[0].text;
-        statusEl.innerText = "Giid räägib:";
-        resultEl.innerText = reply;
-
-        speakEstonian(reply);
-
-      } catch (err) {
-        statusEl.innerText = "Viga!";
-        resultEl.innerText = err.message;
-      } finally {
-        scanBtn.disabled = false;
+      for (const model of candidateModels) {
+        try {
+          statusEl.innerText = `Ühendan giidiga (${model})...`;
+          const reply = await queryModel(model, prompt, base64Data);
+          
+          statusEl.innerText = "Giid räägib:";
+          resultEl.innerText = reply;
+          speakEstonian(reply);
+          success = true;
+          break; // Õnnestus, katkestame tsükli
+        } catch (err) {
+          console.warn(`Mudel ${model} tõrkus:`, err.message);
+          // Kui teade räägib ülekoormusest, proovib järgmist
+        }
       }
+
+      if (!success) {
+        statusEl.innerText = "Kõik liinid on hetkel hõivatud!";
+        resultEl.innerText = "Serverid on hetkel suure koormuse all. Oota 5 sekundit ja proovi uuesti.";
+      }
+
+      scanBtn.disabled = false;
     }
   </script>
 </body>
