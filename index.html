@@ -226,11 +226,7 @@
               { text: prompt },
               { inline_data: { mime_type: "image/jpeg", data: base64Data } }
             ]
-          }],
-          generationConfig: {
-            maxOutputTokens: 1400,
-            temperature: 0.7
-          }
+          }]
         })
       });
 
@@ -248,32 +244,38 @@
       const base64Data = getOptimizedImageData();
       const locInfo = userLocation ? `Koordinaadid: ${userLocation.lat.toFixed(4)}, ${userLocation.lon.toFixed(4)}.` : '';
       
-      const prompt = `Sa oled soe ja asjatundlik eestikeelne reisigiid Vietnamis. ${locInfo}
-Tuvasta pildilt nähtav koht, ese, söök või vaatamisväärsus. 
-Räägi reisijale ladusalt ja kaasahaaravalt 3 kuni 4 lauset: mis see on, miks see kohalikele või ajaloole oluline on, ja üks huvitav detail. 
-Ära tee ametlikku sissejuhatust. Räägi voolavas kõnekeeles ilma loetelutäppideta.`;
+      const prompt = `Sa oled soe, elav ja haritud eestikeelne reisigiid Vietnamis. ${locInfo}
+Tuvasta pildil olev koht, hoone, söök või objekt. 
+Räägi reisijale sõbralikult ja ladusalt 3 kuni 5 sisukat lauset:
+1. Mis see täpselt on ja mis on selle kohalik nimi või tähendus.
+2. Üks põnev fakt, kultuuriline taust või kohalik tava, mis sellega seondub.
+Ära tee ametlikku sissejuhatust, räägi nagu hea giid teekaaslasele. Ära kasuta loetelusid ega tärne.`;
 
-      // Proovitavad mudelid järjestuses
-      const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+      // Kasutame kehtivaid mudeleid
+      const candidateModels = ['gemini-3.8-flash', 'gemini-3.8-pro'];
       let lastErrors = [];
 
       for (const model of candidateModels) {
-        try {
-          statusEl.innerText = `Päring: ${model}...`;
-          const reply = await queryModel(model, prompt, base64Data);
-          
-          statusEl.innerText = "Giid räägib:";
-          resultEl.innerText = reply;
-          speakEstonian(reply);
-          scanBtn.disabled = false;
-          return;
-        } catch (err) {
-          console.warn(err.message);
-          lastErrors.push(err.message);
+        // Teeme vajadusel 2 katset puhuks, kui server teatab ajutisest koormusest
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            statusEl.innerText = `Giid analüüsib (${model})...`;
+            const reply = await queryModel(model, prompt, base64Data);
+            
+            statusEl.innerText = "Giid räägib:";
+            resultEl.innerText = reply;
+            speakEstonian(reply);
+            scanBtn.disabled = false;
+            return;
+          } catch (err) {
+            console.warn(`Katse ${attempt} mudeliga ${model} ebaõnnestus:`, err.message);
+            lastErrors.push(err.message);
+            // Kui server oli ülekoormatud, ootame pool sekundit enne uut katset
+            await new Promise(r => setTimeout(r, 600));
+          }
         }
       }
 
-      // Kui ükski ei toiminud, näitame ekraanil täpset viga
       statusEl.innerText = "Tõrge ühendusel:";
       resultEl.innerText = lastErrors.join("\n\n");
       scanBtn.disabled = false;
