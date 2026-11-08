@@ -6,99 +6,54 @@
   <title>Vietnami Giid</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #121212;
-      color: #fff;
-      overflow: hidden;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
+      background: #121212; color: #fff; overflow: hidden;
+      display: flex; flex-direction: column; height: 100dvh;
     }
-    #camera-container {
-      position: relative;
-      flex: 1;
-      overflow: hidden;
-      background: #000;
+    #camera-container { position: relative; flex: 1 1 45%; min-height: 0; overflow: hidden; background: #000; }
+    video, #frozen { width: 100%; height: 100%; object-fit: cover; }
+    #frozen { position: absolute; inset: 0; display: none; }
+    #reload-btn {
+      position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); right: 12px; z-index: 10;
+      background: rgba(0,0,0,0.55); color: #fff; border: 1px solid #555; border-radius: 50px;
+      padding: 8px 14px; font-size: 15px;
     }
-    video {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
+    #badge {
+      position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); left: 12px; z-index: 10;
+      background: rgba(0,0,0,0.55); border-radius: 50px; padding: 8px 12px; font-size: 13px; display: none;
     }
+
     #controls {
-      position: absolute;
-      bottom: 24px;
-      left: 0;
-      width: 100%;
-      display: flex;
-      justify-content: center;
-      gap: 12px;
-      z-index: 10;
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;
+      padding: 10px 12px; background: #1b1b1b; border-top: 1px solid #333;
     }
-    .action-btn {
-      background: #e63946;
-      color: white;
-      border: none;
-      padding: 16px 28px;
-      border-radius: 50px;
-      font-size: 17px;
-      font-weight: bold;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-      cursor: pointer;
+    #controls button {
+      border: none; border-radius: 12px; padding: 14px 6px; font-size: 15px; font-weight: 600;
+      color: #fff; background: #333; cursor: pointer;
     }
-    .stop-btn {
-      background: #333;
-      color: white;
-      border: none;
-      padding: 16px 22px;
-      border-radius: 50px;
-      font-size: 17px;
-      cursor: pointer;
-    }
-    .action-btn:disabled {
-      background: #666;
-    }
+    #controls button:disabled { opacity: 0.4; }
+    #scan-btn { grid-column: 1 / -1; background: #e63946; font-size: 18px; padding: 16px; }
+    #scan-btn:disabled { background: #666; opacity: 1; }
+
     #output-box {
-      max-height: 42vh;
-      background: rgba(18, 18, 18, 0.95);
-      padding: 18px;
-      overflow-y: auto;
-      border-top: 1px solid #333;
+      flex: 1 1 55%; min-height: 0; overflow-y: auto; padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+      background: #121212; line-height: 1.55;
     }
+    #steps { list-style: none; margin-bottom: 12px; font-size: 14px; color: #aaa; display: grid; gap: 4px; }
+    #steps li.done { color: #7bd389; }
+    #steps li.active { color: #fff; }
+    #steps li.err { color: #ff6b6b; }
+    #result { font-size: 18px; white-space: pre-wrap; }
+    #result .speaking { background: rgba(230,57,70,0.25); border-radius: 4px; }
+
     #setup-modal {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.9);
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      padding: 24px;
-      z-index: 100;
+      position: fixed; inset: 0; background: rgba(0,0,0,0.92); display: flex; flex-direction: column;
+      justify-content: center; padding: 24px; z-index: 100;
     }
-    input {
-      padding: 12px;
-      border-radius: 8px;
-      border: 1px solid #444;
-      background: #222;
-      color: #fff;
-      margin-bottom: 16px;
-      font-size: 16px;
-    }
-    button.save-btn {
-      padding: 12px;
-      border-radius: 8px;
-      background: #2a9d8f;
-      color: white;
-      border: none;
-      font-weight: bold;
-      font-size: 16px;
-    }
-    .status-text {
-      font-style: italic;
-      color: #aaa;
-      margin-bottom: 8px;
-    }
+    #setup-modal input { padding: 12px; border-radius: 8px; border: 1px solid #444; background: #222; color: #fff; margin-bottom: 16px; font-size: 16px; }
+    #setup-modal button { padding: 12px; border-radius: 8px; background: #2a9d8f; color: white; border: none; font-weight: bold; font-size: 16px; }
   </style>
 </head>
 <body>
@@ -107,178 +62,270 @@
     <h2 style="margin-bottom: 12px;">Tere tulemast!</h2>
     <p style="margin-bottom: 16px; color: #ccc;">Sisesta oma Gemini API võti:</p>
     <input type="password" id="api-key-input" placeholder="AIzaSy..." />
-    <button class="save-btn" onclick="saveApiKey()">Alusta giidiga</button>
+    <button onclick="saveApiKey()">Alusta giidiga</button>
   </div>
 
   <div id="camera-container">
     <video id="video" autoplay playsinline muted></video>
+    <img id="frozen" alt="">
     <canvas id="canvas" style="display:none;"></canvas>
-    
-    <div id="controls">
-      <button id="scan-btn" class="action-btn" onclick="captureAndExplain()">Räägi sellest</button>
-      <button class="stop-btn" onclick="stopSpeaking()">Vaikus</button>
-    </div>
+    <div id="badge"></div>
+    <button id="reload-btn" onclick="location.reload()">⟳ Lae leht uuesti</button>
+  </div>
+
+  <div id="controls">
+    <button id="scan-btn" onclick="captureAndExplain()">📷 Räägi sellest</button>
+    <button id="retry-btn" onclick="retryLast()" disabled>↻ Küsi uuesti</button>
+    <button id="replay-btn" onclick="replay()" disabled>▶ Kuula uuesti</button>
+    <button id="stop-btn" onclick="stopAll()">■ Vaikus</button>
   </div>
 
   <div id="output-box">
-    <div id="status" class="status-text">Valmis pildistama...</div>
-    <div id="result">Suuna kaamera huvipakkuvale kohale ja vajuta nupule.</div>
+    <ul id="steps"><li>Suuna kaamera huvipakkuvale kohale ja vajuta „Räägi sellest“.</li></ul>
+    <div id="result"></div>
   </div>
 
   <script>
-    let apiKey = localStorage.getItem('gemini_api_key') || '';
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const statusEl = document.getElementById('status');
-    const resultEl = document.getElementById('result');
-    const scanBtn = document.getElementById('scan-btn');
-    let userLocation = null;
+    const MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
 
-    if (apiKey) {
-      document.getElementById('setup-modal').style.display = 'none';
-      startCamera();
-    }
+    let apiKey = localStorage.getItem('gemini_api_key') || '';
+    const $ = id => document.getElementById(id);
+    const video = $('video'), canvas = $('canvas'), frozen = $('frozen'), badge = $('badge');
+    const stepsEl = $('steps'), resultEl = $('result'), outBox = $('output-box');
+    const scanBtn = $('scan-btn'), retryBtn = $('retry-btn'), replayBtn = $('replay-btn');
+
+    let userLocation = null, currentCtl = null, timer = null;
+    let lastImage = null, lastText = '', sentences = [];
+
+    if (apiKey) { $('setup-modal').style.display = 'none'; startCamera(); }
 
     function saveApiKey() {
-      const val = document.getElementById('api-key-input').value.trim();
-      if (!val) return alert('Palun sisesta API võti!');
+      const val = $('api-key-input').value.trim();
+      if (!val) return;
       apiKey = val;
       localStorage.setItem('gemini_api_key', apiKey);
-      document.getElementById('setup-modal').style.display = 'none';
+      $('setup-modal').style.display = 'none';
       startCamera();
     }
 
     async function startCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            facingMode: { ideal: "environment" },
-            width: { ideal: 1280 }
-          },
-          audio: false
+          video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }, audio: false
         });
         video.srcObject = stream;
-      } catch (err) {
-        alert('Kaamerat ei õnnestunud avada: ' + err.message);
-      }
+      } catch (err) { setSteps([['Kaamerat ei õnnestunud avada: ' + err.message, 'err']]); }
 
       if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
+        navigator.geolocation.watchPosition(
           pos => { userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude }; },
-          err => console.log('GPS info puudub:', err)
+          () => {}, { enableHighAccuracy: false, maximumAge: 60000 }
         );
       }
     }
 
-    function stopSpeaking() {
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
+    // ---------- Olekuread ----------
+    let steps = [];
+    function setSteps(list) { steps = list; renderSteps(); }
+    function step(text, cls = 'active') {
+      steps.forEach(s => { if (s[1] === 'active') s[1] = 'done'; });
+      steps.push([text, cls]); renderSteps();
+    }
+    function renderSteps() {
+      stepsEl.innerHTML = '';
+      for (const [t, c] of steps) {
+        const li = document.createElement('li');
+        li.className = c;
+        li.textContent = (c === 'done' ? '✓ ' : c === 'err' ? '✗ ' : '… ') + t;
+        stepsEl.append(li);
       }
     }
+    function startTimer() {
+      const t0 = performance.now();
+      badge.style.display = 'block';
+      clearInterval(timer);
+      timer = setInterval(() => { badge.textContent = '⏱ ' + ((performance.now() - t0) / 1000).toFixed(1) + ' s'; }, 100);
+      return t0;
+    }
+    function stopTimer() { clearInterval(timer); setTimeout(() => badge.style.display = 'none', 3000); }
 
-    function speakEstonian(text) {
-      if (!('speechSynthesis' in window)) return;
-      stopSpeaking();
-      
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'et-EE';
-      utterance.rate = 1.0;
-      
-      const voices = window.speechSynthesis.getVoices();
-      const etVoice = voices.find(v => v.lang.startsWith('et'));
-      if (etVoice) utterance.voice = etVoice;
+    // ---------- Kõne ----------
+    let etVoice = null;
+    function pickVoice() {
+      etVoice = speechSynthesis.getVoices().find(v => v.lang && v.lang.toLowerCase().startsWith('et')) || null;
+    }
+    if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 
-      window.speechSynthesis.speak(utterance);
+    function speakSentence(text, index) {
+      if (!('speechSynthesis' in window) || !text.trim()) return;
+      const u = new SpeechSynthesisUtterance(text.trim());
+      u.lang = 'et-EE'; u.rate = 1.05;
+      if (etVoice) u.voice = etVoice;
+      u.onstart = () => highlight(index);
+      u.onend = () => highlight(-1);
+      speechSynthesis.speak(u);
+    }
+    function highlight(i) {
+      resultEl.querySelectorAll('span').forEach((s, k) => s.classList.toggle('speaking', k === i));
+    }
+    function renderResult() {
+      resultEl.innerHTML = '';
+      sentences.forEach(s => { const sp = document.createElement('span'); sp.textContent = s; resultEl.append(sp); });
+    }
+    function replay() {
+      if (!sentences.length) return;
+      speechSynthesis.cancel();
+      sentences.forEach((s, i) => speakSentence(s, i));
+    }
+    function stopAll() {
+      if (currentCtl) currentCtl.abort();
+      if ('speechSynthesis' in window) speechSynthesis.cancel();
+      highlight(-1);
     }
 
-    function getOptimizedImageData() {
-      const vw = video.videoWidth || 640;
-      const vh = video.videoHeight || 480;
-      const maxDim = 800;
-      
-      let targetW = vw;
-      let targetH = vh;
-      if (vw > maxDim || vh > maxDim) {
-        if (vw > vh) {
-          targetW = maxDim;
-          targetH = Math.round((vh * maxDim) / vw);
-        } else {
-          targetH = maxDim;
-          targetW = Math.round((vw * maxDim) / vh);
-        }
-      }
-
-      canvas.width = targetW;
-      canvas.height = targetH;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, targetW, targetH);
-      return canvas.toDataURL('image/jpeg', 0.65).split(',')[1];
+    // ---------- Pilt ----------
+    function captureFrame() {
+      const vw = video.videoWidth || 640, vh = video.videoHeight || 480;
+      const s = Math.min(1, 800 / Math.max(vw, vh));
+      canvas.width = Math.round(vw * s); canvas.height = Math.round(vh * s);
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/jpeg', 0.65);
     }
 
-    async function queryModel(modelName, prompt, base64Data) {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-      const response = await fetch(url, {
+    // ---------- Gemini voogedastus ----------
+    async function streamModel(model, prompt, base64Data, signal, onChunk, onConnected, withThinking) {
+      const abortErr = () => { const e = new Error('Peatatud'); e.name = 'AbortError'; return e; };
+      const generationConfig = { maxOutputTokens: 400, temperature: 0.6 };
+      if (withThinking) generationConfig.thinkingConfig = { thinkingLevel: 'minimal' };
+
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: prompt },
-              { inline_data: { mime_type: "image/jpeg", data: base64Data } }
-            ]
-          }]
+          contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: base64Data } }] }],
+          generationConfig
         })
       });
+      if (signal.aborted) throw abortErr();
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`;
+        try { msg = (await res.json()).error?.message || msg; } catch (e) {}
+        const err = new Error(`${model}: ${msg}`); err.status = res.status; throw err;
+      }
+      onConnected();
 
-      const data = await response.json();
-      if (data.error) throw new Error(`${modelName}: ${data.error.message}`);
-      return data.candidates[0].content.parts[0].text;
+      const handleLine = line => {
+        if (!line.startsWith('data:')) return;
+        try {
+          const parts = JSON.parse(line.slice(5)).candidates?.[0]?.content?.parts || [];
+          for (const p of parts) if (p.text && !p.thought) onChunk(p.text);
+        } catch (e) {}
+      };
+
+      if (!res.body || !res.body.getReader) {
+        const text = await res.text();
+        if (signal.aborted) throw abortErr();
+        text.split('\n').forEach(handleLine);
+        return;
+      }
+      const reader = res.body.getReader();
+      signal.addEventListener('abort', () => { try { reader.cancel(); } catch (e) {} }, { once: true });
+      const dec = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (signal.aborted) throw abortErr();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        lines.forEach(handleLine);
+      }
+      if (buf) handleLine(buf);
     }
 
-    async function captureAndExplain() {
-      scanBtn.disabled = true;
-      stopSpeaking();
-      statusEl.innerText = "Kiiranalüüs käib...";
-      resultEl.innerText = "";
+    // ---------- Põhitegevus ----------
+    function captureAndExplain() {
+      const dataUrl = captureFrame();
+      lastImage = dataUrl;
+      run(dataUrl, true);
+    }
+    function retryLast() { if (lastImage) run(lastImage, false); }
 
-      const base64Data = getOptimizedImageData();
-      const locInfo = userLocation ? `Koordinaadid: ${userLocation.lat.toFixed(4)}, ${userLocation.lon.toFixed(4)}.` : '';
-      
+    async function run(dataUrl, fresh) {
+      stopAll();
+      if ('speechSynthesis' in window) speechSynthesis.speak(new SpeechSynthesisUtterance(''));
+
+      scanBtn.disabled = true; retryBtn.disabled = true; replayBtn.disabled = true;
+      const ctl = new AbortController(); currentCtl = ctl;
+      frozen.src = dataUrl; frozen.style.display = 'block';
+      sentences = []; lastText = ''; resultEl.innerHTML = '';
+      const t0 = startTimer();
+      const secs = () => ((performance.now() - t0) / 1000).toFixed(1) + ' s';
+
+      const base64Data = dataUrl.split(',')[1];
+      const kb = Math.round(base64Data.length * 0.75 / 1024);
+      setSteps([[`${fresh ? 'Kaader tehtud' : 'Sama kaader uuesti'} (${canvas.width || ''}×${canvas.height || ''}, ${kb} KB)`, 'done']]);
+      step(userLocation ? 'GPS asukoht olemas' : 'GPS asukohta pole (toimib ka ilma)', userLocation ? 'done' : 'done');
+
+      const locInfo = userLocation ? `Reisija GPS-koordinaadid: ${userLocation.lat.toFixed(4)}, ${userLocation.lon.toFixed(4)} (kasuta asukoha täpsustamiseks).` : '';
       const prompt = `Sa oled soe, elav ja haritud eestikeelne reisigiid Vietnamis. ${locInfo}
-Tuvasta pildil olev koht, hoone, söök või objekt. 
+Tuvasta pildil olev koht, hoone, söök või objekt.
 Räägi reisijale sõbralikult ja ladusalt 3 kuni 5 sisukat lauset:
 1. Mis see täpselt on ja mis on selle kohalik nimi või tähendus.
 2. Üks põnev fakt, kultuuriline taust või kohalik tava, mis sellega seondub.
+Kui sa pole kindel, ütle seda ausalt ega leiuta fakte.
 Ära tee ametlikku sissejuhatust, räägi nagu hea giid teekaaslasele. Ära kasuta loetelusid ega tärne.`;
 
-      // Kasutame kehtivaid mudeleid
-      const candidateModels = ['gemini-3.8-flash', 'gemini-3.8-pro'];
-      let lastErrors = [];
+      let pending = '', gotText = false;
+      const onChunk = txt => {
+        if (!gotText) { gotText = true; step(`Giid räägib (esimesed sõnad ${secs()} pärast)`); }
+        lastText += txt; pending += txt;
+        const m = pending.match(/^[\s\S]*[.!?…](\s|$)/);
+        if (m) {
+          const parts = m[0].match(/[^.!?…]+[.!?…]+\s*/g) || [m[0]];
+          parts.forEach(p => { sentences.push(p); speakSentence(p, sentences.length - 1); });
+          pending = pending.slice(m[0].length);
+        }
+        renderResult();
+        if (pending) resultEl.append(document.createTextNode(pending));
+        outBox.scrollTop = outBox.scrollHeight;
+      };
 
-      for (const model of candidateModels) {
-        // Teeme vajadusel 2 katset puhuks, kui server teatab ajutisest koormusest
+      const errors = [];
+      for (const model of MODELS) {
+        let withThinking = true;
         for (let attempt = 1; attempt <= 2; attempt++) {
           try {
-            statusEl.innerText = `Giid analüüsib (${model})...`;
-            const reply = await queryModel(model, prompt, base64Data);
-            
-            statusEl.innerText = "Giid räägib:";
-            resultEl.innerText = reply;
-            speakEstonian(reply);
-            scanBtn.disabled = false;
-            return;
+            step(`Saadan pildi Geminile (${model})…`);
+            await streamModel(model, prompt, base64Data, ctl.signal, onChunk,
+              () => step(`Pilt kohale jõudnud (${secs()}), giid vaatab pilti…`), withThinking);
+            if (pending.trim()) { sentences.push(pending); speakSentence(pending, sentences.length - 1); renderResult(); }
+            step(`Valmis (${secs()})`, 'done');
+            return finish(true);
           } catch (err) {
-            console.warn(`Katse ${attempt} mudeliga ${model} ebaõnnestus:`, err.message);
-            lastErrors.push(err.message);
-            // Kui server oli ülekoormatud, ootame pool sekundit enne uut katset
-            await new Promise(r => setTimeout(r, 600));
+            if (err.name === 'AbortError') { step('Peatatud', 'err'); return finish(!!sentences.length); }
+            if (lastText) { step('Ühendus katkes poole vastuse pealt', 'err'); return finish(true); }
+            errors.push(err.message);
+            step(err.message, 'err');
+            if (err.status === 400 && /thinking/i.test(err.message) && withThinking) { withThinking = false; continue; }
+            if (err.status === 429 || err.status >= 500 || !err.status) { await new Promise(r => setTimeout(r, 500)); continue; }
+            break;
           }
         }
       }
+      step('Vastust ei saadud. Vajuta „Küsi uuesti“ või kontrolli internetti.', 'err');
+      finish(false);
 
-      statusEl.innerText = "Tõrge ühendusel:";
-      resultEl.innerText = lastErrors.join("\n\n");
-      scanBtn.disabled = false;
+      function finish(hasText) {
+        stopTimer();
+        scanBtn.disabled = false;
+        retryBtn.disabled = !lastImage;
+        replayBtn.disabled = !hasText || !sentences.length;
+        if (currentCtl === ctl) currentCtl = null;
+        setTimeout(() => { frozen.style.display = 'none'; }, 1500);
+      }
     }
   </script>
 </body>
