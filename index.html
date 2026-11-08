@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="et">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Vietnami Giid</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #121212;
+      color: #fff;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    #camera-container {
+      position: relative;
+      flex: 1;
+      overflow: hidden;
+      background: #000;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    #controls {
+      position: absolute;
+      bottom: 20px;
+      left: 0;
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      z-index: 10;
+    }
+    .action-btn {
+      background: #e63946;
+      color: white;
+      border: none;
+      padding: 16px 32px;
+      border-radius: 50px;
+      font-size: 18px;
+      font-weight: bold;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+      cursor: pointer;
+    }
+    .action-btn:disabled {
+      background: #666;
+    }
+    #output-box {
+      max-height: 40vh;
+      background: rgba(18, 18, 18, 0.95);
+      padding: 20px;
+      overflow-y: auto;
+      border-top: 1px solid #333;
+    }
+    #setup-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.9);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 24px;
+      z-index: 100;
+    }
+    input {
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #444;
+      background: #222;
+      color: #fff;
+      margin-bottom: 16px;
+      font-size: 16px;
+    }
+    button.save-btn {
+      padding: 12px;
+      border-radius: 8px;
+      background: #2a9d8f;
+      color: white;
+      border: none;
+      font-weight: bold;
+      font-size: 16px;
+    }
+    .status-text {
+      font-style: italic;
+      color: #aaa;
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- API võtme küsimise aken esmakordsel avamisel -->
+  <div id="setup-modal">
+    <h2 style="margin-bottom: 12px;">Tere tulemast!</h2>
+    <p style="margin-bottom: 16px; color: #ccc;">Sisesta oma Gemini API võti (salvestatakse ainult sinu telefoni brauserisse):</p>
+    <input type="password" id="api-key-input" placeholder="AIzaSy..." />
+    <button class="save-btn" onclick="saveApiKey()">Alusta giidiga</button>
+  </div>
+
+  <!-- Kaamera vaade -->
+  <div id="camera-container">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas" style="display:none;"></canvas>
+    
+    <div id="controls">
+      <button id="scan-btn" class="action-btn" onclick="captureAndExplain()">Räägi mulle sellest</button>
+    </div>
+  </div>
+
+  <!-- Teksti ja vastuse aken -->
+  <div id="output-box">
+    <div id="status" class="status-text">Valmis pildistama...</div>
+    <div id="result">Suuna kaamera huvipakkuvale objektile ja vajuta nupule.</div>
+  </div>
+
+  <script>
+    let apiKey = localStorage.getItem('gemini_api_key') || '';
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const statusEl = document.getElementById('status');
+    const resultEl = document.getElementById('result');
+    const scanBtn = document.getElementById('scan-btn');
+    let userLocation = null;
+
+    if (apiKey) {
+      document.getElementById('setup-modal').style.display = 'none';
+      startCamera();
+    }
+
+    function saveApiKey() {
+      const val = document.getElementById('api-key-input').value.trim();
+      if (!val) return alert('Palun sisesta API võti!');
+      apiKey = val;
+      localStorage.setItem('gemini_api_key', apiKey);
+      document.getElementById('setup-modal').style.display = 'none';
+      startCamera();
+    }
+
+    // Käivitab tagakaamera
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false
+        });
+        video.srcObject = stream;
+      } catch (err) {
+        alert('Kaamerat ei õnnestunud avada: ' + err.message);
+      }
+
+      // Küsib koordinaadid taustal
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          pos => { userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude }; },
+          err => console.log('GPS pole saadaval:', err)
+        );
+      }
+    }
+
+    // Loeb teksti eesti keeles ette
+    function speakEstonian(text) {
+      if (!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel(); // peata eelmine kõne
+      
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'et-EE'; // eesti keele kood
+      utterance.rate = 1.0;
+      
+      // Proovime leida spetsiaalse eesti hääle, kui brauseris leidub
+      const voices = window.speechSynthesis.getVoices();
+      const etVoice = voices.find(v => v.lang.startsWith('et'));
+      if (etVoice) utterance.voice = etVoice;
+
+      window.speechSynthesis.speak(utterance);
+    }
+
+    async function captureAndExplain() {
+      scanBtn.disabled = true;
+      statusEl.innerText = "Pildistan ja analüüsin...";
+      resultEl.innerText = "";
+
+      // 1. Pildi kaadrist võtmine
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const base64Data = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+      // 2. Viip (prompt) Geminile
+      const locInfo = userLocation ? `Asukoha koordinaadid: Laius ${userLocation.lat}, Pikkus ${userLocation.lon}.` : '';
+      const prompt = `Sa oled tark ja soe eestikeelne reisigiid Vietnamis. 
+${locInfo}
+Tuvasta pildil olev koht, hoone, söök või objekt. 
+Tee lühike, kaasahaarav ja huvitav tutvustus (maksimaalselt 3–4 lauset). 
+Räägi elavalt, nagu räägiks professionaalne giid otse reisijale. 
+Ära kasuta loetelusid ega tärne, räägi voolavas kõnekeeles.`;
+
+      // 3. API päring Gemini 2.5 Flash mudelile
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { text: prompt },
+                { inline_data: { mime_type: "image/jpeg", data: base64Data } }
+              ]
+            }]
+          })
+        });
+
+        const data = await response.json();
+        
+        if (data.error) {
+          throw new Error(data.error.message);
+        }
+
+        const reply = data.candidates[0].content.parts[0].text;
+        statusEl.innerText = "Giid räägib:";
+        resultEl.innerText = reply;
+
+        // 4. Loeme ette
+        speakEstonian(reply);
+
+      } catch (err) {
+        statusEl.innerText = "Viga!";
+        resultEl.innerText = err.message;
+      } finally {
+        scanBtn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
