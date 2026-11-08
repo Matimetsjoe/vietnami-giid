@@ -95,6 +95,7 @@
     const scanBtn = $('scan-btn'), retryBtn = $('retry-btn'), replayBtn = $('replay-btn');
 
     let userLocation = null, currentCtl = null, timer = null;
+    let lastMeta = {};
     let lastImage = null, lastText = '', sentences = [];
 
     if (apiKey) { $('setup-modal').style.display = 'none'; startCamera(); }
@@ -195,7 +196,7 @@
     // ---------- Gemini voogedastus ----------
     async function streamModel(model, prompt, base64Data, signal, onChunk, onConnected, withThinking) {
       const abortErr = () => { const e = new Error('Peatatud'); e.name = 'AbortError'; return e; };
-      const generationConfig = { maxOutputTokens: 400, temperature: 0.6 };
+      const generationConfig = { maxOutputTokens: 2048, temperature: 0.6 };
       if (withThinking) generationConfig.thinkingConfig = { thinkingLevel: 'minimal' };
 
       const res = await fetch(
@@ -215,11 +216,14 @@
       }
       onConnected();
 
-      const handleLine = line => {
+            const handleLine = line => {
         if (!line.startsWith('data:')) return;
         try {
-          const parts = JSON.parse(line.slice(5)).candidates?.[0]?.content?.parts || [];
-          for (const p of parts) if (p.text && !p.thought) onChunk(p.text);
+          const j = JSON.parse(line.slice(5));
+          const c = j.candidates?.[0];
+          if (c?.finishReason) lastMeta.finish = c.finishReason;
+          if (j.usageMetadata) lastMeta.usage = j.usageMetadata;
+          for (const p of (c?.content?.parts || [])) if (p.text && !p.thought) onChunk(p.text);
         } catch (e) {}
       };
 
@@ -255,6 +259,7 @@
 
     async function run(dataUrl, fresh) {
       stopAll();
+      lastMeta = {};
       if ('speechSynthesis' in window) speechSynthesis.speak(new SpeechSynthesisUtterance(''));
 
       scanBtn.disabled = true; retryBtn.disabled = true; replayBtn.disabled = true;
@@ -302,7 +307,8 @@ Kui sa pole kindel, ütle seda ausalt ega leiuta fakte.
             await streamModel(model, prompt, base64Data, ctl.signal, onChunk,
               () => step(`Pilt kohale jõudnud (${secs()}), giid vaatab pilti…`), withThinking);
             if (pending.trim()) { sentences.push(pending); speakSentence(pending, sentences.length - 1); renderResult(); }
-            step(`Valmis (${secs()})`, 'done');
+            s            const u = lastMeta.usage || {};
+            step(`Valmis (${secs()}) · lõpu põhjus: ${lastMeta.finish || '?'} · mõtlemine ${u.thoughtsTokenCount || 0} / vastus ${u.candidatesTokenCount || 0} tokenit`, 'done');
             return finish(true);
           } catch (err) {
             if (err.name === 'AbortError') { step('Peatatud', 'err'); return finish(!!sentences.length); }
