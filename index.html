@@ -307,7 +307,7 @@ Kui sa pole kindel, ütle seda ausalt ega leiuta fakte.
             await streamModel(model, prompt, base64Data, ctl.signal, onChunk,
               () => step(`Pilt kohale jõudnud (${secs()}), giid vaatab pilti…`), withThinking);
             if (pending.trim()) { sentences.push(pending); speakSentence(pending, sentences.length - 1); renderResult(); }
-            s            const u = lastMeta.usage || {};
+            const u = lastMeta.usage || {};
             step(`Valmis (${secs()}) · lõpu põhjus: ${lastMeta.finish || '?'} · mõtlemine ${u.thoughtsTokenCount || 0} / vastus ${u.candidatesTokenCount || 0} tokenit`, 'done');
             return finish(true);
           } catch (err) {
