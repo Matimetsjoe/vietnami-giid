@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Vietnami Giid</title>
+    <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#121212">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">  
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     [hidden] { display: none !important; }
@@ -567,6 +571,9 @@ Kui sa pole kindel, ütle seda ausalt ega leiuta fakte.
 ${cards}
 </body></html>`;
       download(`vietnami-paevik-${today()}.html`, html, 'text/html;charset=utf-8');
+    }
+        if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
     }
   </script>
 </body>
