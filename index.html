@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Vietnami Giid</title>
-    <link rel="manifest" href="manifest.json">
+  <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#121212">
   <link rel="icon" href="icon-192.png">
-  <link rel="apple-touch-icon" href="icon-192.png">  
+  <link rel="apple-touch-icon" href="icon-192.png">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     [hidden] { display: none !important; }
@@ -58,20 +58,22 @@
     #result { font-size: 18px; white-space: pre-wrap; }
     #result .speaking { background: rgba(230,57,70,0.25); border-radius: 4px; }
 
-    /* Päevik */
+    /* Päevik – kogu vaade kerib */
     #journal {
       position: fixed; inset: 0; z-index: 50; background: #121212;
-      display: flex; flex-direction: column;
-      padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);
+      overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
     }
-    .j-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #333; }
+    .j-top { position: sticky; top: 0; z-index: 2; background: #121212; padding-top: env(safe-area-inset-top, 0px); }
+    .j-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 16px; border-bottom: 1px solid #333; }
     .j-head h2 { font-size: 20px; }
-    .j-head button { background: #333; color: #fff; border: none; border-radius: 50px; padding: 8px 14px; font-size: 16px; }
+    .j-head-btns { display: flex; gap: 8px; }
+    .j-head button { background: #333; color: #fff; border: none; border-radius: 50px; padding: 8px 14px; font-size: 15px; }
     .j-actions { display: flex; gap: 8px; padding: 12px 16px; flex-wrap: wrap; border-bottom: 1px solid #333; }
     .j-actions button { flex: 1 1 auto; background: #2a9d8f; color: #fff; border: none; border-radius: 10px; padding: 12px 10px; font-size: 15px; font-weight: 600; }
     .j-actions button.danger { background: #444; }
     .j-actions button.confirm { background: #e63946; }
-    #j-list { flex: 1; overflow-y: auto; padding: 12px 16px 24px; display: grid; gap: 16px; align-content: start; }
+    #j-list { padding: 12px 16px 40px; display: grid; gap: 16px; }
     .j-item { background: #1b1b1b; border: 1px solid #2c2c2c; border-radius: 14px; overflow: hidden; }
     .j-item img { display: block; width: 100%; max-height: 240px; object-fit: cover; }
     .j-body { padding: 12px 14px; display: grid; gap: 8px; }
@@ -83,7 +85,8 @@
       padding: 8px 10px; font: inherit; font-size: 15px; resize: vertical;
     }
     .j-btns { display: flex; gap: 8px; }
-    .j-btns button { background: #333; color: #fff; border: none; border-radius: 8px; padding: 8px 12px; font-size: 14px; }
+    .j-btns button { background: #333; color: #fff; border: none; border-radius: 8px; padding: 10px 14px; font-size: 15px; }
+    .j-btns button.playing { background: #e63946; }
     .j-btns button.confirm { background: #e63946; }
     .j-empty { color: #aaa; text-align: center; padding: 40px 0; }
 
@@ -119,7 +122,7 @@
     <div id="badge"></div>
     <div class="top-btns">
       <button onclick="openJournal()">📔 Päevik</button>
-      <button onclick="location.reload()">⟳ v6</button>
+      <button onclick="location.reload()">⟳ v7</button>
     </div>
     <div id="saved-toast" hidden>✓ Salvestatud päevikusse</div>
   </div>
@@ -137,14 +140,19 @@
   </div>
 
   <div id="journal" hidden>
-    <div class="j-head">
-      <h2 id="j-title">Reisipäevik</h2>
-      <button onclick="closeJournal()">✕ Sulge</button>
-    </div>
-    <div class="j-actions">
-      <button onclick="exportHtml()">⬇ Päevik (HTML)</button>
-      <button onclick="exportTxt()">⬇ Tekstid (TXT)</button>
-      <button id="clear-btn" class="danger" onclick="clearAll(this)">🗑 Kustuta kõik</button>
+    <div class="j-top">
+      <div class="j-head">
+        <h2 id="j-title">Reisipäevik</h2>
+        <div class="j-head-btns">
+          <button id="sort-btn" onclick="toggleSort()">↕ Uuemad ees</button>
+          <button onclick="closeJournal()">✕</button>
+        </div>
+      </div>
+      <div class="j-actions">
+        <button onclick="exportHtml()">⬇ Päevik (HTML)</button>
+        <button onclick="exportTxt()">⬇ Tekstid (TXT)</button>
+        <button id="clear-btn" class="danger" onclick="clearAll(this)">🗑 Kustuta kõik</button>
+      </div>
     </div>
     <div id="j-list"></div>
   </div>
@@ -187,11 +195,10 @@
           () => {}, { enableHighAccuracy: false, maximumAge: 60000 }
         );
       }
-      // Palu brauseril päevikut mitte kustutada, kui mälu jääb vähe
       try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
     }
 
-    // ---------- Andmebaas (IndexedDB – mahutab sadu pilte) ----------
+    // ---------- Andmebaas ----------
     const DB = (() => {
       let dbp = null;
       function open() {
@@ -253,14 +260,20 @@
     }
     if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 
-    function speakSentence(text, index) {
-      if (!('speechSynthesis' in window) || !text.trim()) return;
+    function makeUtt(text) {
       const u = new SpeechSynthesisUtterance(text.trim());
       u.lang = 'et-EE'; u.rate = 1.05;
       if (etVoice) u.voice = etVoice;
+      return u;
+    }
+    function speakSentence(text, index) {
+      if (!('speechSynthesis' in window) || !text.trim()) return;
+      const u = makeUtt(text);
       if (index != null) { u.onstart = () => highlight(index); u.onend = () => highlight(-1); }
       speechSynthesis.speak(u);
     }
+    const splitSentences = t => (t.match(/[^.!?…]+[.!?…]*\s*/g) || [t]).map(s => s.trim()).filter(Boolean);
+
     function highlight(i) {
       resultEl.querySelectorAll('span').forEach((s, k) => s.classList.toggle('speaking', k === i));
     }
@@ -271,12 +284,39 @@
     function replay() {
       if (!sentences.length) return;
       speechSynthesis.cancel();
-      sentences.forEach((s, i) => speakSentence(s, i));
+      // Android: kohe pärast cancel() antud kõne kaob ära, seepärast väike paus
+      setTimeout(() => { speechSynthesis.resume(); sentences.forEach((s, i) => speakSentence(s, i)); }, 200);
     }
     function stopAll() {
       if (currentCtl) currentCtl.abort();
       if ('speechSynthesis' in window) speechSynthesis.cancel();
       highlight(-1);
+      resetJournalSpeakBtn();
+    }
+
+    // Päeviku "Kuula" nupp: esimene vajutus loeb, teine peatab
+    let speakingBtn = null;
+    function resetJournalSpeakBtn() {
+      if (speakingBtn) { speakingBtn.textContent = '▶ Kuula'; speakingBtn.classList.remove('playing'); }
+      speakingBtn = null;
+    }
+    function speakText(text, btn) {
+      if (!('speechSynthesis' in window)) return;
+      const wasThis = speakingBtn === btn;
+      speechSynthesis.cancel();
+      resetJournalSpeakBtn();
+      if (wasThis) return;
+      speakingBtn = btn; btn.textContent = '■ Peata'; btn.classList.add('playing');
+      const parts = splitSentences(text);
+      setTimeout(() => {
+        if (speakingBtn !== btn) return;
+        speechSynthesis.resume();
+        parts.forEach((s, i) => {
+          const u = makeUtt(s);
+          if (i === parts.length - 1) u.onend = u.onerror = () => { if (speakingBtn === btn) resetJournalSpeakBtn(); };
+          speechSynthesis.speak(u);
+        });
+      }, 200);
     }
 
     // ---------- Pilt ----------
@@ -346,9 +386,9 @@
 
     // ---------- Põhitegevus ----------
     function captureAndExplain() {
-      lastPhoto = grab(1600, 0.82);      // päeviku jaoks parem kvaliteet
-      lastImage = grab(800, 0.65);       // Geminile väike ja kiire
-      lastEntryId = null;                // uus leid
+      lastPhoto = grab(1600, 0.82);
+      lastImage = grab(800, 0.65);
+      lastEntryId = null;
       run(lastImage, true);
     }
     function retryLast() { if (lastImage) run(lastImage, false); }
@@ -437,7 +477,7 @@ Kui sa pole kindel, ütle seda ausalt ega leiuta fakte.
       if (!text || !lastPhoto) return;
       try {
         let entry;
-        if (lastEntryId) {                       // "Küsi uuesti" -> uuenda sama leidu
+        if (lastEntryId) {
           entry = await DB.get(lastEntryId);
           if (entry) { entry.text = text; entry.model = model; }
         }
@@ -458,18 +498,31 @@ Kui sa pole kindel, ütle seda ausalt ega leiuta fakte.
     const mapUrl = e => `https://www.google.com/maps?q=${e.lat},${e.lon}`;
     const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+    let newestFirst = true;
+    try { newestFirst = localStorage.getItem('giid_sort') !== 'old'; } catch (e) {}
+
+    function toggleSort() {
+      newestFirst = !newestFirst;
+      try { localStorage.setItem('giid_sort', newestFirst ? 'new' : 'old'); } catch (e) {}
+      renderJournal();
+      $('journal').scrollTop = 0;
+    }
+
     async function openJournal() {
       stopAll();
       $('journal').hidden = false;
+      $('journal').scrollTop = 0;
       await renderJournal();
     }
-    function closeJournal() { $('journal').hidden = true; speechSynthesis.cancel(); }
+    function closeJournal() { $('journal').hidden = true; speechSynthesis.cancel(); resetJournalSpeakBtn(); }
 
     async function renderJournal() {
+      speechSynthesis.cancel(); resetJournalSpeakBtn();
       const list = $('j-list');
+      $('sort-btn').textContent = newestFirst ? '↕ Uuemad ees' : '↕ Vanemad ees';
       let items = [];
-      try { items = (await DB.all()).sort((a, b) => b.id - a.id); } catch (e) {}
-      $('j-title').textContent = `Reisipäevik (${items.length})`;
+      try { items = (await DB.all()).sort((a, b) => newestFirst ? b.id - a.id : a.id - b.id); } catch (e) {}
+      $('j-title').textContent = `Päevik (${items.length})`;
       list.innerHTML = '';
       if (!items.length) { list.innerHTML = '<p class="j-empty">Päevik on veel tühi. Iga „Räägi sellest“ salvestub siia automaatselt.</p>'; return; }
 
@@ -477,7 +530,7 @@ Kui sa pole kindel, ütle seda ausalt ega leiuta fakte.
         const card = document.createElement('div');
         card.className = 'j-item';
         card.innerHTML = `
-          <img src="${e.photo}" alt="">
+          <img src="${e.photo}" alt="" loading="lazy">
           <div class="j-body">
             <div class="j-meta">
               <span>${esc(fmtTime(e.time))}</span>
@@ -493,10 +546,8 @@ Kui sa pole kindel, ütle seda ausalt ega leiuta fakte.
         card.querySelector('textarea').addEventListener('change', async ev => {
           e.note = ev.target.value; try { await DB.put(e); } catch (err) {}
         });
-        card.querySelector('[data-act="speak"]').onclick = () => {
-          speechSynthesis.cancel();
-          (e.text.match(/[^.!?…]+[.!?…]*\s*/g) || [e.text]).forEach(s => speakSentence(s));
-        };
+        const spBtn = card.querySelector('[data-act="speak"]');
+        spBtn.onclick = () => speakText(e.text, spBtn);
         const delBtn = card.querySelector('[data-act="del"]');
         delBtn.onclick = async () => {
           if (!delBtn.classList.contains('confirm')) {
@@ -572,7 +623,8 @@ ${cards}
 </body></html>`;
       download(`vietnami-paevik-${today()}.html`, html, 'text/html;charset=utf-8');
     }
-        if ('serviceWorker' in navigator) {
+
+    if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').catch(() => {});
     }
   </script>
